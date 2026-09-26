@@ -60,6 +60,7 @@
   .vid-thumb{width:76px;height:46px;object-fit:cover;background:var(--bg);border:1px solid var(--line);flex-shrink:0;}
   .vid-thumb.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.6rem;text-align:center;}
   .vid-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .admin-actions{display:flex;gap:.4rem;flex-shrink:0;}
   .empty{color:var(--muted);font-size:.9rem;padding:.7rem 0;border-top:1px solid var(--line);}
   .rm{color:var(--muted);font-size:.8rem;cursor:pointer;background:none;border:none;font-family:inherit;}
   .rm:hover{color:var(--red);}
@@ -141,6 +142,7 @@
     <label for="vThumb">Thumbnail image</label>
     <input type="file" id="vThumb" accept="image/*">
     <button id="addBtn">Add video</button>
+    <button id="cancelEditBtn" type="button" style="display:none;background:none;border:1px solid var(--line);color:var(--muted);margin-top:.5rem;width:100%;padding:.5rem;border-radius:3px;font-family:inherit;cursor:pointer;">Cancel edit</button>
     <div class="status" id="adminStatus"></div>
     <hr style="border-color:var(--line);margin:1.2rem 0;">
     <label for="statProj">Projects</label>
@@ -159,6 +161,7 @@
 const PASSWORD = "Besho94b##";
 let DATA = JSON.parse(document.getElementById('data-json').textContent);
 if(!DATA.stats) DATA.stats = {projects:25, clients:17, years:2};
+let editing = null;
 
 const firebaseConfig = {
   apiKey: "AIzaSyCTY08rKt7VMktgjDeZMCOCaJgoIWER3jI",
@@ -223,7 +226,12 @@ function renderCats(){
     const isAdmin = document.getElementById('adminView').style.display !== 'none';
     let bodyHtml = '';
     if(vids.length){
-      bodyHtml = vids.map((v,i)=>`<div class="vid-item"><a class="vid-link" href="${escAttr(v.url)}" target="_blank" rel="noopener">${v.thumb?`<img class="vid-thumb" src="${v.thumb}">`:`<div class="vid-thumb empty">No image</div>`}<span class="vid-title">${esc(v.title)}</span></a>${isAdmin?`<button class="rm" data-cat="${escAttr(cat)}" data-i="${i}">remove</button>`:''}</div>`).join('');
+      bodyHtml = vids.map((v,i)=>`<div class="vid-item"><a class="vid-link" href="${escAttr(v.url)}" target="_blank" rel="noopener">${v.thumb?`<img class="vid-thumb" src="${v.thumb}">`:`<div class="vid-thumb empty">No image</div>`}<span class="vid-title">${esc(v.title)}</span></a>${isAdmin?`<span class="admin-actions">
+        <button class="rm" data-action="up" data-cat="${escAttr(cat)}" data-i="${i}" ${i===0?'disabled':''}>↑</button>
+        <button class="rm" data-action="down" data-cat="${escAttr(cat)}" data-i="${i}" ${i===vids.length-1?'disabled':''}>↓</button>
+        <button class="rm" data-action="edit" data-cat="${escAttr(cat)}" data-i="${i}">edit</button>
+        <button class="rm" data-action="remove" data-cat="${escAttr(cat)}" data-i="${i}">remove</button>
+      </span>`:''}</div>`).join('');
     } else {
       bodyHtml = `<div class="empty">No videos in this category yet.</div>`;
     }
@@ -233,10 +241,23 @@ function renderCats(){
   list.querySelectorAll('.rm').forEach(btn=>{
     btn.addEventListener('click',(e)=>{
       e.preventDefault();
-      const cat = btn.dataset.cat, i = parseInt(btn.dataset.i);
-      DATA.videos[cat].splice(i,1);
-      renderCats();
-      persist('adminStatus');
+      const cat = btn.dataset.cat, i = parseInt(btn.dataset.i), action = btn.dataset.action;
+      const arr = DATA.videos[cat];
+      if(action==='remove'){
+        arr.splice(i,1);
+        renderCats();
+        persist('adminStatus');
+      } else if(action==='up' && i>0){
+        [arr[i-1],arr[i]] = [arr[i],arr[i-1]];
+        renderCats();
+        persist('adminStatus');
+      } else if(action==='down' && i<arr.length-1){
+        [arr[i+1],arr[i]] = [arr[i],arr[i+1]];
+        renderCats();
+        persist('adminStatus');
+      } else if(action==='edit'){
+        startEdit(cat,i);
+      }
     });
   });
 }
@@ -245,11 +266,43 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 function escAttr(s){return esc(s);}
 function fileToDataUrl(file){
   return new Promise((res,rej)=>{
-    const r = new FileReader();
-    r.onload = ()=>res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(file);
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = 480;
+        const scale = Math.min(1, maxW/img.width);
+        const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        res(canvas.toDataURL('image/jpeg',0.7));
+      };
+      img.onerror = rej;
+      img.src = e.target.result;
+    };
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
   });
+}
+function startEdit(cat,i){
+  editing = {cat,i};
+  const v = DATA.videos[cat][i];
+  document.getElementById('catSel').value = cat;
+  document.getElementById('vTitle').value = v.title;
+  document.getElementById('vUrl').value = v.url;
+  document.getElementById('vThumb').value = '';
+  document.getElementById('addBtn').textContent = 'Save changes';
+  document.getElementById('cancelEditBtn').style.display = 'block';
+  panel.classList.add('open');
+}
+function stopEdit(){
+  editing = null;
+  document.getElementById('vTitle').value = '';
+  document.getElementById('vUrl').value = '';
+  document.getElementById('vThumb').value = '';
+  document.getElementById('addBtn').textContent = 'Add video';
+  document.getElementById('cancelEditBtn').style.display = 'none';
 }
 
 async function persist(statusId){
@@ -306,13 +359,29 @@ document.getElementById('addBtn').addEventListener('click', async ()=>{
   if(file){
     try{ thumb = await fileToDataUrl(file); }catch(err){ console.error(err); }
   }
-  DATA.videos[cat] = DATA.videos[cat] || [];
-  DATA.videos[cat].push({title,url,thumb});
+  if(editing){
+    const old = DATA.videos[editing.cat][editing.i];
+    const updated = {title, url, thumb: thumb || old.thumb || null};
+    if(editing.cat === cat){
+      DATA.videos[cat][editing.i] = updated;
+    } else {
+      DATA.videos[editing.cat].splice(editing.i,1);
+      DATA.videos[cat] = DATA.videos[cat] || [];
+      DATA.videos[cat].push(updated);
+    }
+    stopEdit();
+  } else {
+    DATA.videos[cat] = DATA.videos[cat] || [];
+    DATA.videos[cat].push({title,url,thumb});
+  }
   document.getElementById('vTitle').value = '';
   document.getElementById('vUrl').value = '';
   document.getElementById('vThumb').value = '';
   renderCats();
   persist('adminStatus');
+});
+document.getElementById('cancelEditBtn').addEventListener('click', ()=>{
+  stopEdit();
 });
 document.getElementById('saveStatsBtn').addEventListener('click', ()=>{
   DATA.stats.projects = parseInt(document.getElementById('statProj').value) || 0;
