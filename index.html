@@ -45,18 +45,21 @@
   .stat .label{color:var(--muted);font-size:.95rem;margin-top:.3rem;}
 
   /* CATEGORIES */
-  .cat-head{font-size:.9rem;color:var(--muted);margin-bottom:1.5rem;}
+  .cat-head{font-size:2.8rem;color:var(--cream);font-weight:600;margin-bottom:1.5rem;line-height:1.1;}
   .cat-row{border-bottom:1px solid var(--line);}
   .cat-row summary{list-style:none;display:flex;align-items:center;justify-content:space-between;padding:1.6rem .2rem;cursor:pointer;}
   .cat-row summary::-webkit-details-marker{display:none;}
-  .cat-row summary h2{font-size:2.2rem;color:var(--cream);}
+  .cat-row summary h2{font-size:2.2rem;color:var(--red);}
   .cat-row summary .meta{display:flex;align-items:center;gap:1rem;color:var(--muted);font-size:.9rem;}
   .cat-row summary .chev{transition:transform .2s;}
   .cat-row[open] summary .chev{transform:rotate(45deg);}
   .cat-body{padding:0 .2rem 1.6rem;}
-  .vid-item{display:flex;justify-content:space-between;gap:1rem;padding:.7rem 0;border-top:1px solid var(--line);font-size:.95rem;}
-  .vid-item a{color:var(--cream);text-decoration:none;}
-  .vid-item a:hover{color:var(--red);}
+  .vid-item{display:flex;align-items:center;gap:.8rem;padding:.7rem 0;border-top:1px solid var(--line);font-size:.95rem;}
+  .vid-item .vid-link{display:flex;align-items:center;gap:.8rem;flex:1;min-width:0;color:var(--cream);text-decoration:none;}
+  .vid-item .vid-link:hover .vid-title{color:var(--red);}
+  .vid-thumb{width:76px;height:46px;object-fit:cover;background:var(--bg);border:1px solid var(--line);flex-shrink:0;}
+  .vid-thumb.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.6rem;text-align:center;}
+  .vid-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .empty{color:var(--muted);font-size:.9rem;padding:.7rem 0;border-top:1px solid var(--line);}
   .rm{color:var(--muted);font-size:.8rem;cursor:pointer;background:none;border:none;font-family:inherit;}
   .rm:hover{color:var(--red);}
@@ -92,10 +95,10 @@
   <div class="scroll-cue"><span></span>scroll</div>
 </section>
 
-<section class="stats">
-  <div class="stat"><div class="num">25</div><div class="label">Projects</div></div>
-  <div class="stat"><div class="num">17</div><div class="label">Clients</div></div>
-  <div class="stat"><div class="num">2</div><div class="label">Years of experience</div></div>
+<section class="stats" id="statsSection">
+  <div class="stat"><div class="num" id="statProjects">25</div><div class="label">Projects</div></div>
+  <div class="stat"><div class="num" id="statClients">17</div><div class="label">Clients</div></div>
+  <div class="stat"><div class="num" id="statYears">2</div><div class="label">Years of experience</div></div>
 </section>
 
 <section id="cats">
@@ -135,15 +138,27 @@
     <input type="text" id="vTitle" placeholder="e.g. Wedding teaser">
     <label for="vUrl">Video link</label>
     <input type="text" id="vUrl" placeholder="https://...">
+    <label for="vThumb">Thumbnail image</label>
+    <input type="file" id="vThumb" accept="image/*">
     <button id="addBtn">Add video</button>
     <div class="status" id="adminStatus"></div>
+    <hr style="border-color:var(--line);margin:1.2rem 0;">
+    <label for="statProj">Projects</label>
+    <input type="number" id="statProj">
+    <label for="statCli">Clients</label>
+    <input type="number" id="statCli">
+    <label for="statYrs">Years of experience</label>
+    <input type="number" id="statYrs">
+    <button id="saveStatsBtn">Save stats</button>
+    <div class="status" id="statsStatus"></div>
   </div>
 </div>
 
-<script id="data-json" type="application/json">{"categories": ["Reels", "Podcast", "Music", "Gaming", "EDU", "Events", "Logo Animation"], "videos": {"Reels": [{"title": "VM SRORE", "url": "https://drive.google.com/file/d/1Yx2ROjaLyyx239AM4LPznS3sVUbZkHxA/view?usp=drivesdk"}], "Podcast": [], "Music": [], "Gaming": [], "EDU": [], "Events": [], "Logo Animation": []}}</script>
+<script id="data-json" type="application/json">{"categories": ["Reels", "Podcast", "Music", "Gaming", "EDU", "Events", "Logo Animation"], "videos": {"Reels": [{"title": "VM SRORE", "url": "https://drive.google.com/file/d/1Yx2ROjaLyyx239AM4LPznS3sVUbZkHxA/view?usp=drivesdk"}], "Podcast": [], "Music": [], "Gaming": [], "EDU": [], "Events": [], "Logo Animation": []}, "stats": {"projects": 25, "clients": 17, "years": 2}}</script>
 <script>
 const PASSWORD = "Besho94b##";
 let DATA = JSON.parse(document.getElementById('data-json').textContent);
+if(!DATA.stats) DATA.stats = {projects:25, clients:17, years:2};
 
 const firebaseConfig = {
   apiKey: "AIzaSyCTY08rKt7VMktgjDeZMCOCaJgoIWER3jI",
@@ -159,18 +174,43 @@ try{
   db = firebase.firestore();
 }catch(err){ console.error('Firebase init failed', err); db = null; }
 
+function renderStats(){
+  document.getElementById('statProjects').textContent = DATA.stats.projects;
+  document.getElementById('statClients').textContent = DATA.stats.clients;
+  document.getElementById('statYears').textContent = DATA.stats.years;
+}
+
 async function loadData(){
   if(db){
     try{
       const snap = await db.collection('portfolio').doc('data').get();
-      if(snap.exists && snap.data().videos){
-        DATA.videos = snap.data().videos;
+      if(snap.exists){
+        const d = snap.data();
+        if(d.videos) DATA.videos = d.videos;
+        if(d.stats) DATA.stats = d.stats;
+        if(!d.videos || !d.stats){
+          await db.collection('portfolio').doc('data').set({videos: DATA.videos, stats: DATA.stats}, {merge:true});
+        }
       } else {
-        await db.collection('portfolio').doc('data').set({videos: DATA.videos});
+        await db.collection('portfolio').doc('data').set({videos: DATA.videos, stats: DATA.stats});
       }
     }catch(err){ console.error('Firestore load failed', err); }
   }
   renderCats();
+  renderStats();
+}
+
+async function persistStats(){
+  const el = document.getElementById('statsStatus');
+  document.getElementById('data-json').textContent = JSON.stringify(DATA);
+  if(!db){ if(el) el.textContent = 'Could not connect to the database.'; return; }
+  try{
+    if(el) el.textContent = 'Saving…';
+    await db.collection('portfolio').doc('data').set({stats: DATA.stats}, {merge:true});
+    if(el) el.textContent = 'Saved.';
+  }catch(err){
+    if(el) el.textContent = 'Could not save.';
+  }
 }
 
 function renderCats(){
@@ -183,7 +223,7 @@ function renderCats(){
     const isAdmin = document.getElementById('adminView').style.display !== 'none';
     let bodyHtml = '';
     if(vids.length){
-      bodyHtml = vids.map((v,i)=>`<div class="vid-item"><a href="${escAttr(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a>${isAdmin?`<button class="rm" data-cat="${escAttr(cat)}" data-i="${i}">remove</button>`:''}</div>`).join('');
+      bodyHtml = vids.map((v,i)=>`<div class="vid-item"><a class="vid-link" href="${escAttr(v.url)}" target="_blank" rel="noopener">${v.thumb?`<img class="vid-thumb" src="${v.thumb}">`:`<div class="vid-thumb empty">No image</div>`}<span class="vid-title">${esc(v.title)}</span></a>${isAdmin?`<button class="rm" data-cat="${escAttr(cat)}" data-i="${i}">remove</button>`:''}</div>`).join('');
     } else {
       bodyHtml = `<div class="empty">No videos in this category yet.</div>`;
     }
@@ -203,6 +243,14 @@ function renderCats(){
 
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function escAttr(s){return esc(s);}
+function fileToDataUrl(file){
+  return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
 
 async function persist(statusId){
   const el = document.getElementById(statusId);
@@ -240,22 +288,38 @@ document.getElementById('pwBtn').addEventListener('click', ()=>{
     document.getElementById('adminView').style.display = 'block';
     const sel = document.getElementById('catSel');
     sel.innerHTML = DATA.categories.map(c=>`<option value="${escAttr(c)}">${esc(c)}</option>`).join('');
+    document.getElementById('statProj').value = DATA.stats.projects;
+    document.getElementById('statCli').value = DATA.stats.clients;
+    document.getElementById('statYrs').value = DATA.stats.years;
     renderCats();
   } else {
     document.getElementById('pwStatus').textContent = 'Wrong password.';
   }
 });
-document.getElementById('addBtn').addEventListener('click', ()=>{
+document.getElementById('addBtn').addEventListener('click', async ()=>{
   const cat = document.getElementById('catSel').value;
   const title = document.getElementById('vTitle').value.trim();
   const url = document.getElementById('vUrl').value.trim();
+  const file = document.getElementById('vThumb').files[0];
   if(!title || !url){ document.getElementById('adminStatus').textContent = 'Add a title and a link.'; return; }
+  let thumb = null;
+  if(file){
+    try{ thumb = await fileToDataUrl(file); }catch(err){ console.error(err); }
+  }
   DATA.videos[cat] = DATA.videos[cat] || [];
-  DATA.videos[cat].push({title,url});
+  DATA.videos[cat].push({title,url,thumb});
   document.getElementById('vTitle').value = '';
   document.getElementById('vUrl').value = '';
+  document.getElementById('vThumb').value = '';
   renderCats();
   persist('adminStatus');
+});
+document.getElementById('saveStatsBtn').addEventListener('click', ()=>{
+  DATA.stats.projects = parseInt(document.getElementById('statProj').value) || 0;
+  DATA.stats.clients = parseInt(document.getElementById('statCli').value) || 0;
+  DATA.stats.years = parseInt(document.getElementById('statYrs').value) || 0;
+  renderStats();
+  persistStats();
 });
 
 loadData();
